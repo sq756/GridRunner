@@ -1,0 +1,8 @@
+name: "Dummy Echo Plugin"
+description: "A simple plugin for testing the Ter Plugin Loader."
+command: "echo 'Hello from Dummy Plugin!'"
+parameters:
+  - name: "input_text"
+    type: "string"
+    description: "Text to echo back"
+    default: "Default Text"

@@ -1,0 +1,49 @@
+
+> vitetmp@2.5.6 tauri
+> tauri build
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> vitetmp@2.5.6 build
+> vite build
+
+vite v8.0.0-beta.18 building client environment for production...
+[2Ktransforming...✓ 633 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.70 kB │ gzip:   0.38 kB
+dist/assets/index-D3YxpLsw.css     24.33 kB │ gzip:   5.14 kB
+dist/assets/index-M-rN4tKA.js   1,612.66 kB │ gzip: 509.34 kB
+
+[33m[INEFFECTIVE_DYNAMIC_IMPORT] Warning:[0m node_modules/@tauri-apps/api/core.js is dynamically imported by src/components/TerminalView.vue?vue&type=script&setup=true&lang.ts but also statically imported by node_modules/@tauri-apps/api/event.js, src/App.vue?vue&type=script&setup=true&lang.ts, src/TerminalManager.ts, src/components/CyberGate.vue?vue&type=script&setup=true&lang.ts, src/composables/useContextMenu.ts, ..., dynamic import will not move module into another chunk.
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 861ms
+   Compiling app v2.5.6 (/home/sq/Research/SSH/ter/src-tauri)
+warning: method `append_log` is never used
+  --> src/db.rs:60:18
+   |
+21 | impl Db {
+   | ------- method in this implementation
+...
+60 |     pub async fn append_log(&self, tab_id: &...
+   |                  ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `app` (lib) generated 1 warning
+    Finished `release` profile [optimized] target(s) in 29.93s
+       Built application at: /home/sq/Research/SSH/ter/src-tauri/target/release/app
+        Info Patching /home/sq/Research/SSH/ter/src-tauri/target/release/app with bundle type information: deb
+    Bundling ter_2.5.6_amd64.deb (/home/sq/Research/SSH/ter/src-tauri/target/release/bundle/deb/ter_2.5.6_amd64.deb)
+        Info Patching /home/sq/Research/SSH/ter/src-tauri/target/release/app with bundle type information: rpm
+    Bundling ter-2.5.6-1.x86_64.rpm (/home/sq/Research/SSH/ter/src-tauri/target/release/bundle/rpm/ter-2.5.6-1.x86_64.rpm)
+        Info Patching /home/sq/Research/SSH/ter/src-tauri/target/release/app with bundle type information: appimage
+    Bundling ter_2.5.6_amd64.AppImage (/home/sq/Research/SSH/ter/src-tauri/target/release/bundle/appimage/ter_2.5.6_amd64.AppImage)
+failed to bundle project `failed to run linuxdeploy`
+       Error failed to bundle project `failed to run linuxdeploy`

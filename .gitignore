@@ -1,0 +1,10 @@
+node_modules
+target
+src-tauri/target
+local_go
+.DS_Store
+dist
+dist-tauri
+bin
+*.log
+ter.db

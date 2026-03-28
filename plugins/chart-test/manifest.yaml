@@ -1,0 +1,4 @@
+name: "Server Traffic Analytics"
+description: "Visualizes dummy server traffic data using ECharts."
+command: "echo '{\"type\": \"chart\", \"message\": [400, 300, 500, 100, 200, 800, 450]}'"
+parameters: []

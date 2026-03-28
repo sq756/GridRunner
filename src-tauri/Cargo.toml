@@ -1,0 +1,55 @@
+[package]
+name = "gridrunner"
+version = "2.18.0"
+description = "GridRunner - Advanced AI description = "Ter - Advanced SSH & Webview Terminal" Cyber SSH Terminal"
+authors = ["sq"]
+license = "MIT"
+repository = "https://github.com/sq756/GridRunner"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "ter_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.6", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.10.3", features = ["image-png", "image-ico"] }
+tauri-plugin-log = "2"
+anyhow = "1.0.102"
+async-trait = "0.1.89"
+russh = "0.57.1"
+russh-keys = "0.49.2"
+russh-sftp = "2.0.4"
+ssh-key = "0.6.7"
+tokio = { version = "1.50.0", features = ["full"] }
+uuid = { version = "1.11.0", features = ["v4"] }
+tauri-plugin-dialog = "2.6.0"
+tauri-plugin-shell = "2.3.5"
+tauri-plugin-clipboard-manager = "2.2.0"
+sqlx = { version = "0.8.3", features = ["runtime-tokio-rustls", "sqlite", "macros"] }
+sqlx-sqlite = { version = "0.8.3", features = ["bundled"] }
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+subtle = "2.4"
+base64 = "0.22"
+serde_yaml = "0.9"
+tiny_http = "0.12"
+dashmap = "6.1.0"
+lazy_static = "1.4"
+regex = "1.10"
+chrono = "0.4"
+# portable-pty moved to target-specific section below (not Android)
+sysinfo = "0.33"
+tauri-plugin-fs = "2.4.5"
+
+# portable-pty uses termios which has no Android support.
+# Gate it to desktop platforms only.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+portable-pty = "0.8"

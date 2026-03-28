@@ -1,0 +1,40 @@
+{
+  "version": "0.1.9",
+  "skills": [
+    {
+      "name": "ai_audit_ui",
+      "description": "截取当前 Ter 软件的 UI 快照。用于验证 CSS 修改、布局效果或插件弹窗。",
+      "trigger": "curl http://127.0.0.1:1414",
+      "context_requirement": {
+        "require_screenshot": true
+      }
+    },
+    {
+      "name": "run_plugin",
+      "description": "执行指定的 Ter 插件。支持 Flow B 模式的 UI 动态注入（通知、图表等）。",
+      "parameters": {
+        "name": "插件目录名 (如 dummy, chart-test)"
+      }
+    },
+    {
+      "name": "list_plugins",
+      "description": "扫描并列出所有已安装的第三方插件及其能力声明。"
+    },
+    {
+      "name": "read_context",
+      "description": "跨 Tab 获取其他终端的运行上下文或当前文件树。用于解决报错对齐、代码协同等复杂运维场景。",
+      "context_requirement": {
+        "require_tabs": true,
+        "require_files": true
+      }
+    },
+    {
+      "name": "connect_to_ssh",
+      "description": "建立远程 SSH 连接并部署 Go Agent。这是所有可视化监控的前提。"
+    }
+  ],
+  "environment": {
+    "dev_server": "http://localhost:5173",
+    "trigger_api": "http://127.0.0.1:1414"
+  }
+}
