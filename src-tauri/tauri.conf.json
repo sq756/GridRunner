@@ -43,7 +43,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../ter_agent/agent_linux_amd64"
+      "../gr_agent/main.go"
     ]
   }
 }

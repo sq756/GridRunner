@@ -2025,6 +2025,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "gridrunner"
+version = "2.18.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "argon2",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "dashmap",
+ "lazy_static",
+ "log",
+ "portable-pty",
+ "rand 0.8.5",
+ "regex",
+ "russh",
+ "russh-keys",
+ "russh-sftp",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sqlx",
+ "sqlx-sqlite",
+ "ssh-key",
+ "subtle",
+ "sysinfo",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-log",
+ "tauri-plugin-shell",
+ "tiny_http",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6169,45 +6208,6 @@ dependencies = [
  "futf",
  "mac",
  "utf-8",
-]
-
-[[package]]
-name = "ter"
-version = "2.18.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "argon2",
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "dashmap",
- "lazy_static",
- "log",
- "portable-pty",
- "rand 0.8.5",
- "regex",
- "russh",
- "russh-keys",
- "russh-sftp",
- "serde",
- "serde_json",
- "serde_yaml",
- "sqlx",
- "sqlx-sqlite",
- "ssh-key",
- "subtle",
- "sysinfo",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-log",
- "tauri-plugin-shell",
- "tiny_http",
- "tokio",
- "uuid",
 ]
 
 [[package]]
