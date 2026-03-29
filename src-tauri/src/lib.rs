@@ -234,6 +234,74 @@ impl GridPtyChannel for SshPtyChannel {
 
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use futures_util::{StreamExt, SinkExt, stream::{SplitSink, SplitStream}};
+use std::net::SocketAddr;
+
+struct SkipServerVerification;
+impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
+    fn verify_server_cert(&self, _end_entity: &rustls::pki_types::CertificateDer<'_>, _intermediates: &[rustls::pki_types::CertificateDer<'_>], _server_name: &rustls::pki_types::ServerName<'_>, _ocsp_response: &[u8], _now: rustls::pki_types::UnixTime) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+    fn verify_tls12_signature(&self, _message: &[u8], _cert: &rustls::pki_types::CertificateDer<'_>, _dss: &rustls::DigitallySignedStruct) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+    fn verify_tls13_signature(&self, _message: &[u8], _cert: &rustls::pki_types::CertificateDer<'_>, _dss: &rustls::DigitallySignedStruct) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        vec![rustls::SignatureScheme::RSA_PSS_SHA256, rustls::SignatureScheme::ED25519]
+    }
+}
+
+struct QuicTransport {
+    addr: SocketAddr,
+    endpoint: quinn::Endpoint,
+}
+
+#[async_trait::async_trait]
+impl GridTransport for QuicTransport {
+    async fn open_pty(&self, tab_id: &str, _cols: u32, _rows: u32) -> Result<Box<dyn GridPtyChannel>, String> {
+        let conn = self.endpoint.connect(self.addr, "localhost").map_err(|e| e.to_string())?.await.map_err(|e| e.to_string())?;
+        let mut stream = conn.open_bi().await.map_err(|e| e.to_string())?;
+        // Handshake: Send TabID first (max 64 bytes)
+        let mut handshake = [0u8; 64];
+        let id_bytes = tab_id.as_bytes();
+        let len = id_bytes.len().min(64);
+        handshake[..len].copy_from_slice(&id_bytes[..len]);
+        stream.0.write_all(&handshake[..len]).await.map_err(|e| e.to_string())?;
+        Ok(Box::new(QuicPtyChannel { send: stream.0, recv: stream.1 }))
+    }
+    async fn list_dir(&self, _path: &str) -> Result<RemoteDirContent, String> { Err("QUIC list_dir not yet implemented".to_string()) }
+    async fn read_file(&self, _path: &str) -> Result<Vec<u8>, String> { Err("QUIC read_file not yet implemented".to_string()) }
+    async fn write_file(&self, _path: &str, _content: &[u8]) -> Result<(), String> { Err("QUIC write_file not yet implemented".to_string()) }
+    async fn delete_file(&self, _path: &str) -> Result<(), String> { Err("QUIC delete_file not yet implemented".to_string()) }
+    async fn download_file(&self, _remote: &str, _local: &str) -> Result<(), String> { Err("QUIC download_file not yet implemented".to_string()) }
+    async fn upload_file(&self, _remote: &str, _local: &str) -> Result<(), String> { Err("QUIC upload_file not yet implemented".to_string()) }
+    async fn list_tmux_sessions(&self) -> Result<Vec<String>, String> { Err("QUIC list_tmux not yet implemented".to_string()) }
+    async fn kill_tmux_session(&self, _id: &str) -> Result<(), String> { Err("QUIC kill_tmux not yet implemented".to_string()) }
+    async fn open_tunnel(&self, _remote_port: u16) -> Result<u16, String> { Err("QUIC tunneling not available".to_string()) }
+    fn protocol_name(&self) -> &str { "QUIC/UDP" }
+}
+
+struct QuicPtyChannel {
+    send: quinn::SendStream,
+    recv: quinn::RecvStream,
+}
+
+#[async_trait::async_trait]
+impl GridPtyChannel for QuicPtyChannel {
+    async fn write(&self, _data: &[u8]) -> Result<(), String> {
+        // For production, wrap send in Mutex like WebSocket
+        Err("QUIC write requires internal mutability (impl planned)".to_string())
+    }
+    async fn resize(&self, _cols: u32, _rows: u32) -> Result<(), String> { Ok(()) }
+    async fn next_msg(&mut self) -> Option<PtyMessage> {
+        let mut buf = [0u8; 4096];
+        match self.recv.read(&mut buf).await {
+            Ok(Some(n)) => Some(PtyMessage::Data(buf[..n].to_vec())),
+            _ => Some(PtyMessage::Close),
+        }
+    }
+}
 
 struct WsTransport {
     base_url: String,
