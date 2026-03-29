@@ -14,6 +14,7 @@ const props = defineProps<{
   isActive: boolean;
   isSafeMode?: boolean;
   zoneId?: string; // v2.15.3: Used for coordinate isolation
+  hideHeader?: boolean; // v2.18.3: Support for external address bars
 }>();
 const emit = defineEmits(['dom-extracted', 'web-context-menu']);
 
@@ -21,6 +22,8 @@ const containerRef = ref<HTMLElement | null>(null);
 const isWebviewReady = ref(false);
 const isWebviewError = ref(false);
 const isPinned = ref(true);
+
+const headerHeight = computed(() => props.hideHeader ? 0 : 32);
 
 const inputUrl = ref(props.url);
 const handleNavigate = () => {
@@ -63,12 +66,12 @@ const updateWebviewBounds = async () => {
   const rect = containerRef.value.getBoundingClientRect();
   const windowPos = await getCurrentWindow().innerPosition();
   
-  const safeHeight = Math.max(100, rect.height - 32);
+  const safeHeight = Math.max(100, rect.height - headerHeight.value);
   const safeWidth = Math.max(100, rect.width);
 
   const bounds = { 
     x: Math.round(windowPos.x + rect.x),
-    y: Math.round(windowPos.y + rect.y + 32), 
+    y: Math.round(windowPos.y + rect.y + headerHeight.value), 
     width: Math.round(safeWidth),
     height: Math.round(safeHeight)
   };
@@ -98,9 +101,9 @@ const initWebview = async () => {
   try {
     await webviewManager.create(props.id, props.url, {
       x: props.isActive ? Math.round(windowPos.x + rect.x) : -10000,
-      y: props.isActive ? Math.round(windowPos.y + rect.y + 32) : -10000,
+      y: props.isActive ? Math.round(windowPos.y + rect.y + headerHeight.value) : -10000,
       width: Math.max(100, Math.round(rect.width)),
-      height: Math.max(100, Math.round(rect.height - 32))
+      height: Math.max(100, Math.round(rect.height - headerHeight.value))
     });
 
     unlistenExtracted = await listen<string>(`dom-extracted-${props.id}`, (ev) => { emit('dom-extracted', ev.payload); });
@@ -166,7 +169,7 @@ defineExpose({ reload: () => invoke('reload_cyber_webview', { label: props.id })
 
 <template>
   <div class="cyber-webview" ref="containerRef" :data-id="id">
-    <div class="drag-handle">
+    <div v-if="!hideHeader" class="drag-handle">
       <div class="drag-region"></div>
       <div class="url-bar">
         <input v-model="inputUrl" @keydown.enter="handleNavigate" class="url-input" placeholder="Enter URL and press ENTER..." />

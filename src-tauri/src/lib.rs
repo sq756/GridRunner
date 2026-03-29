@@ -917,16 +917,35 @@ pub fn run() {
                     sys.refresh_cpu_all(); sys.refresh_memory(); networks.refresh(false);
                     let mut total_recv = 0; let mut total_sent = 0;
                     for (_, data) in &networks { total_recv += data.received(); total_sent += data.transmitted(); }
-                    let net_recv_speed = if prev_net_recv > 0 { (total_recv.saturating_sub(prev_net_recv)) / 3 } else { 0 };
-                    let net_sent_speed = if prev_net_sent > 0 { (total_sent.saturating_sub(prev_net_sent)) / 3 } else { 0 };
+                    let net_recv_speed = if prev_net_recv > 0 { (total_recv.saturating_sub(prev_net_recv)) / 5 } else { 0 };
+                    let net_sent_speed = if prev_net_sent > 0 { (total_sent.saturating_sub(prev_net_sent)) / 5 } else { 0 };
                     prev_net_recv = total_recv; prev_net_sent = total_sent;
                     let _ = ah_telemetry.emit("system-stats", serde_json::json!({ "cpu_usage": sys.global_cpu_usage(), "mem_used": sys.used_memory(), "mem_total": sys.total_memory(), "net_sent": net_sent_speed, "net_recv": net_recv_speed, "uptime": sysinfo::System::uptime(), "is_heartbeat": true })); 
                 } 
             });
-            tauri::async_runtime::block_on(async move { 
-                let db_init = tokio::time::timeout(std::time::Duration::from_secs(5), Db::new(&db_url)).await;
-                match db_init { Ok(Ok(db)) => { let _ = state.db.set(db); } Ok(Err(e)) => { *state.db_error.lock().await = Some(e.to_string()); } Err(_) => { *state.db_error.lock().await = Some("Database initialization timed out".to_string()); } }
-            }); Ok(())
+
+            // v2.18.5: Async Database Initialization (Fix for 2min startup hang)
+            let ah_db = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                log::info!("[INIT] Starting background database synchronization...");
+                let db_init = tokio::time::timeout(std::time::Duration::from_secs(30), Db::new(&db_url)).await;
+                let state_db = ah_db.state::<AppState>();
+                match db_init { 
+                    Ok(Ok(db)) => { 
+                        let _ = state_db.db.set(db); 
+                        let _ = ah_db.emit("backend-log", "[SYSTEM] Database link established.");
+                    } 
+                    Ok(Err(e)) => { 
+                        *state_db.db_error.lock().await = Some(e.to_string()); 
+                        let _ = ah_db.emit("backend-log", format!("[ERROR] DB_FAIL: {}", e));
+                    } 
+                    Err(_) => { 
+                        *state_db.db_error.lock().await = Some("Database initialization timed out".to_string()); 
+                        let _ = ah_db.emit("backend-log", "[ERROR] DB_TIMEOUT after 30s");
+                    } 
+                }
+            });
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             set_master_password, check_master_password_set, list_server_configs, delete_server_config, connect_with_id, upgrade_transport,

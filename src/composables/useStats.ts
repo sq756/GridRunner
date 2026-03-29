@@ -71,16 +71,11 @@ export function useStats(currentAgentPort: Ref<number | null>, agentToken: Ref<s
     cpuHistory.value.push(d.cpu_usage);
     memHistory.value.push((d.mem_used / d.mem_total) * 100);
 
-    // Calc Network Speed
-    const now = Date.now();
-    const dt = (now - lastNetStats.value.time) / 1000;
-    if (dt > 0) {
-      const up = (d.net_sent - lastNetStats.value.sent) / dt;
-      const down = (d.net_recv - lastNetStats.value.recv) / dt;
-      currentNetSpeed.value = { up: formatSpeed(up), down: formatSpeed(down) };
-      netHistory.value.push(up + down);
-      lastNetStats.value = { sent: d.net_sent, recv: d.net_recv, time: now };
-    }
+    // Calc Network Speed (Backend already provides bytes per second)
+    const up = d.net_sent || 0;
+    const down = d.net_recv || 0;
+    currentNetSpeed.value = { up: formatSpeed(up), down: formatSpeed(down) };
+    netHistory.value.push(up + down);
 
     if (cpuHistory.value.length > 30) {
       cpuHistory.value.shift();

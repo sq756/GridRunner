@@ -73,7 +73,7 @@ const cursorStyle = computed(() => ({
   width: 100vw;
   height: 100vh;
   pointer-events: none;
-  z-index: 999999;
+  z-index: 2147483647;
 }
 
 .cyber-cursor {

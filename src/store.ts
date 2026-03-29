@@ -149,6 +149,9 @@ const flushLogBuffer = () => {
   logThrottleId = null;
 };
 
+// v2.18.5: Retry Circuit Breaker
+const retryCountMap: Record<string, number> = {};
+
 export const storeActions = {
   pushLog(log: string) {
     logBuffer.push(log);
@@ -206,10 +209,14 @@ export const storeActions = {
     if (t) {
       t.isBackground = false;
       activeTabId.value = id;
+      
+      // v2.18.2: Automatic UI Expansion
+      globalState.isSidebarOpen = true;
+      window.dispatchEvent(new CustomEvent('switch-sidebar-view', { detail: 'OPS' }));
     }
   },
 
-  async createNewTab(title = "SHELL", viewType: any = 'terminal', data: any = {}, skipPty = false, existingId?: string) {
+  async createNewTab(title = "SHELL", viewType: any = 'terminal', data: any = {}, skipPty = false, existingId?: string, isUserAction = false) {
     const id = existingId || 'tab-' + Math.random().toString(36).substr(2, 9);
     console.log(`[TER_CORE] Creating tab: ${id} (${title}) type: ${viewType}`);
 
@@ -222,6 +229,13 @@ export const storeActions = {
       } else {
         activeTabId.value = id;
       }
+      
+      // v2.18.5: Focus and expand UI only on user action to prevent hijacking
+      if (isUserAction) {
+        globalState.isSidebarOpen = true;
+        window.dispatchEvent(new CustomEvent('switch-sidebar-view', { detail: 'OPS' }));
+      }
+      
       window.dispatchEvent(new CustomEvent('ter-tab-activity', { detail: { id, timestamp: Date.now() } }));
       return id;
     }
@@ -260,6 +274,12 @@ export const storeActions = {
       activeTabId.value = id;
     }
 
+    // v2.18.5: Expand sidebar ONLY if user explicitly opened this tab
+    if (isUserAction) {
+        globalState.isSidebarOpen = true;
+        window.dispatchEvent(new CustomEvent('switch-sidebar-view', { detail: 'OPS' }));
+    }
+
     // Sync activity for the sidebar indicator
     window.dispatchEvent(new CustomEvent('ter-tab-activity', { detail: { id, timestamp: Date.now() } }));
 
@@ -284,7 +304,16 @@ export const storeActions = {
     const tab = terminalTabs.value.find(t => t.id === id);
     if (!tab || tab.viewType !== 'terminal') return;
     
-    storeActions.pushLog(`[SYSTEM] Attempting automatic session recovery for ${id}...`);
+    // v2.18.5: Circuit Breaker Logic
+    const currentRetries = retryCountMap[id] || 0;
+    if (currentRetries >= 3) {
+      storeActions.pushLog(`[FATAL] Session ${id} reached retry limit. Stopping auto-recovery to prevent UI lock.`);
+      return;
+    }
+    
+    retryCountMap[id] = currentRetries + 1;
+    storeActions.pushLog(`[SYSTEM] Attempting automatic session recovery for ${id} (Attempt ${retryCountMap[id]}/3)...`);
+    
     try {
       if (globalState.host === 'LOCAL') {
         await invoke('spawn_local_pty', { tabId: id });
@@ -294,6 +323,8 @@ export const storeActions = {
       // Send a newline to trigger prompt refresh
       setTimeout(() => invoke('write_pty', { tabId: id, data: "\n\r" }), 500);
       storeActions.pushLog(`[SUCCESS] Session ${id} recovered.`);
+      // Reset retry count on success
+      retryCountMap[id] = 0;
     } catch (e) {
       storeActions.pushLog(`[ERROR] Session recovery failed for ${id}: ${e}`);
     }

@@ -309,6 +309,7 @@ const getSlotStyle = (idx: number) => {
                :isActive="true"
                :isSafeMode="globalState.isSafeMode"
                :zoneId="zoneId"
+               :hide-header="true"
                @dom-extracted="onDomExtracted"
              />
            </div>

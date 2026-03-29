@@ -62,6 +62,7 @@ class TerminalManager {
       // v2.17.0: FIXED DA Leak (^[[?1;2c)
       // Disabling device attributes response prevents the terminal from 
       // automatically replying to \x1b[c which can pollute the PTY buffer.
+      deviceAttributes: '',
       ...options
     });
 
