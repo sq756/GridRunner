@@ -635,18 +635,6 @@ watch(() => showWebMenu.value, (val) => { if (val) activeMenu.value = 'web'; });
     <CyberGate v-if="!globalState.isConnected" @connected="onConnected" />
     
     <div v-else class="main-view">
-      <SettingsPanel :isOpen="globalState.showSettings" 
-                     :useNativeWebview="useNativeWebview" 
-                     :isSafeMode="globalState.isSafeMode"
-                     :sidebarSlots="sidebarSlots"
-                     :uiPrefs="uiPrefs"
-                     @update:useNativeWebview="useNativeWebview = $event" 
-                     @update:isSafeMode="storeActions.toggleSafeMode($event)"
-                     @update:sidebarSlots="sidebarSlots = $event"
-                     @update-layout="handleUpdateLayout"
-                     @auto-detect="autoDetectScale"
-                     @close="globalState.showSettings = false" @update-macros="(m) => activeMacros = m" />
-      
       <main class="workspace" @click.stop>
         <!-- Modals and Context Menus -->
         <div v-if="showWebMenu" class="context-menu" :style="{ top: webMenuY + 'px', left: webMenuX + 'px' }">
@@ -936,8 +924,20 @@ watch(() => showWebMenu.value, (val) => { if (val) activeMenu.value = 'web'; });
     <MatrixScreen :isLocked="globalState.isLocked" :logs="backendLogs" :cpuUsage="currentCpuUsage ?? 0" @unlock="globalState.isLocked = false" />
     <NetworkMatrix v-if="globalState.showNetworkMatrix" :activeId="globalState.activeServerId" :activeTabId="activeTabId" @close="globalState.showNetworkMatrix = false" />
     <QuantumInspector :isOpen="globalState.showQuantumAudit" @close="globalState.showQuantumAudit = false" />
-    <CyberNexus :isOpen="globalState.showNexus" @close="globalState.showNexus = false" />
     <CyberCursor />
+
+    <SettingsPanel :isOpen="globalState.showSettings" 
+                     :useNativeWebview="useNativeWebview" 
+                     :isSafeMode="globalState.isSafeMode"
+                     :sidebarSlots="sidebarSlots"
+                     :uiPrefs="uiPrefs"
+                     @update:useNativeWebview="useNativeWebview = $event" 
+                     @update:isSafeMode="storeActions.toggleSafeMode($event)"
+                     @update:sidebarSlots="sidebarSlots = $event"
+                     @update-layout="handleUpdateLayout"
+                     @auto-detect="autoDetectScale"
+                     @close="globalState.showSettings = false" @update-macros="(m) => activeMacros = m" />
+    <CyberNexus :isOpen="globalState.showNexus" @close="globalState.showNexus = false" />
   </div>
 </template>
 

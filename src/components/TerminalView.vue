@@ -87,7 +87,11 @@ const initTerminal = async (retries = 5) => {
   if (props.active) {
     const instance = await terminalManager.getOrCreate(props.id);
     setTimeout(() => {
-      instance.term.focus();
+      // v3.1.9: Prevent focus theft
+      const activeEl = document.activeElement;
+      if (!activeEl || activeEl === document.body || activeEl.closest('.terminal-view-container')) {
+        instance.term.focus();
+      }
       instance.term.refresh(0, instance.term.rows - 1); // Force redraw
     }, 150);
   }
@@ -127,7 +131,11 @@ watch(() => props.active, async (isActive) => {
           const instance = terminalManager.instances.get(props.id);
           if (instance) {
             instance.term.refresh(0, instance.term.rows - 1);
-            instance.term.focus();
+            // v3.1.9: Prevent focus theft
+      const activeEl = document.activeElement;
+      if (!activeEl || activeEl === document.body || activeEl.closest('.terminal-view-container')) {
+        instance.term.focus();
+      }
           }
         }, 30);
       }
@@ -145,7 +153,11 @@ watch(() => props.id, async (newId, oldId) => {
     performFit();
     if (props.active) {
       setTimeout(() => {
+        // v3.1.9: Prevent focus theft
+      const activeEl = document.activeElement;
+      if (!activeEl || activeEl === document.body || activeEl.closest('.terminal-view-container')) {
         instance.term.focus();
+      }
         instance.term.refresh(0, instance.term.rows - 1);
       }, 100);
     }

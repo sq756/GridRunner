@@ -294,10 +294,9 @@ export const storeActions = {
     const tab = terminalTabs.value.find(t => t.id === id);
     if (!tab || tab.viewType !== 'terminal' || reconnectingIds.has(id)) return;
     
-    // v3.0.1: Smart Circuit Breaker with Exponential Backoff
     const currentRetries = retryCountMap[id] || 0;
     if (currentRetries >= 3) {
-      this.pushLog(`[FATAL] Session ${id} reached retry limit. Stopping auto-recovery.`);
+      storeActions.pushLog(`[FATAL] Session ${id} reached retry limit. Stopping auto-recovery.`);
       reconnectingIds.delete(id);
       return;
     }
@@ -305,14 +304,14 @@ export const storeActions = {
     reconnectingIds.add(id);
     const waitTime = Math.pow(2, currentRetries) * 1000;
     retryCountMap[id] = currentRetries + 1;
-    this.pushLog(`[SYSTEM] Connection loss on ${id}. Auto-recovery in ${waitTime/1000}s...`);
+    storeActions.pushLog(`[SYSTEM] Connection loss on ${id}. Auto-recovery in ${waitTime/1000}s...`);
     
     setTimeout(async () => {
       if (!globalState.isConnected) {
         reconnectingIds.delete(id);
         return;
       }
-      this.pushLog(`[SYSTEM] Attempting recovery for ${id} (Attempt ${retryCountMap[id]}/3)...`);
+      storeActions.pushLog(`[SYSTEM] Attempting recovery for ${id} (Attempt ${retryCountMap[id]}/3)...`);
       try {
         if (globalState.host === 'LOCAL') { 
           await invoke('spawn_local_pty', { tabId: id }); 
@@ -330,7 +329,7 @@ export const storeActions = {
             if (globalState.isConnected) invoke('write_pty', { tabId: id, data: "\n\r" });
         }, 500);
       } catch (e) {
-        this.pushLog(`[ERROR] Session recovery failed: ${e}`);
+        storeActions.pushLog(`[ERROR] Session recovery failed: ${e}`);
         reconnectingIds.delete(id);
       }
     }, waitTime);
@@ -348,13 +347,14 @@ export const storeActions = {
 
   // v2.19.0: Workspace Layout Control
   updateLayout(newTree: LayoutNode) {
+    if (!newTree || !newTree.type) return;
     globalState.workspaceTree = newTree;
     localStorage.setItem('ter_workspace_tree', JSON.stringify(newTree));
     setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 100);
   },
 
   setPreset(name: 'RESEARCH' | 'DEV' | 'SIMULATION') {
-    if (globalState.workspaceTree.id === (name === 'RESEARCH' ? 'res-root' : name === 'DEV' ? 'dev-root' : 'root')) return;
+    if (globalState.workspaceTree && globalState.workspaceTree.id === (name === 'RESEARCH' ? 'res-root' : name === 'DEV' ? 'dev-root' : 'root')) return;
     let tree: LayoutNode;
     if (name === 'RESEARCH') {
       tree = {
@@ -371,7 +371,7 @@ export const storeActions = {
               ]}
           ]}
         ]
-      };
+      } as LayoutNode;
     } else if (name === 'DEV') {
       tree = {
         id: 'dev-root', type: 'split-h', ratio: 70, children: [
@@ -381,14 +381,14 @@ export const storeActions = {
             { id: '@ai', type: 'widget', widgetId: 'SIDEBAR_PANEL' }
           ]}
         ]
-      };
+      } as LayoutNode;
     } else {
        tree = { id: 'root', type: 'split-h', ratio: 25, children: [
          { id: 'side', type: 'widget', widgetId: 'SIDEBAR_PANEL' },
          { id: 'main', type: 'widget', widgetId: 'TERMINAL_MAIN' }
-       ]};
+       ]} as LayoutNode;
     }
-    this.updateLayout(tree);
+    storeActions.updateLayout(tree);
   },
 
   dispatchRPC(from: AgentRoleType, rawMessage: any) {
@@ -406,11 +406,11 @@ export const storeActions = {
     try {
       switch (action) {
         case 'input': if (target && target.startsWith('@')) { const role = target.substring(1); if (routeTo(role, payload + '\r')) event.status = 'CONSUMED'; } break;
-        case 'terminate': this.pushLog(`[🎉] TASK_COMPLETED: ${payload || 'Goal reached.'}`); ap.isActive = false; event.status = 'CONSUMED'; break;
-        case 'abort': this.pushLog(`[⚠️] TASK_ABORTED: ${payload}`); ap.isPaused = true; event.status = 'CONSUMED'; break;
+        case 'terminate': storeActions.pushLog(`[🎉] TASK_COMPLETED: ${payload || 'Goal reached.'}`); ap.isActive = false; event.status = 'CONSUMED'; break;
+        case 'abort': storeActions.pushLog(`[⚠️] TASK_ABORTED: ${payload}`); ap.isPaused = true; event.status = 'CONSUMED'; break;
         case 'evaluate_result': ap.currentScore = payload.score || 0; ap.lastCriticFeedback = payload.feedback || "";
-          if (ap.currentScore >= ap.targetScore) { this.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'terminate', payload: 'Score threshold reached.' }); } 
-          else { this.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'input', payload: `Score: ${ap.currentScore}. Feedback: ${ap.lastCriticFeedback}` }); }
+          if (ap.currentScore >= ap.targetScore) { storeActions.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'terminate', payload: 'Score threshold reached.' }); } 
+          else { storeActions.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'input', payload: `Score: ${ap.currentScore}. Feedback: ${ap.lastCriticFeedback}` }); }
           event.status = 'CONSUMED'; break;
       }
     } catch (e) { event.status = 'FAILED'; console.error("[Orchestrator] Dispatch error:", e); }
