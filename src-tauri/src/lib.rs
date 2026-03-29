@@ -233,7 +233,7 @@ impl GridPtyChannel for SshPtyChannel {
 }
 
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use futures_util::{StreamExt, SinkExt};
+use futures_util::{StreamExt, SinkExt, stream::{SplitSink, SplitStream}};
 
 struct WsTransport {
     base_url: String,
@@ -245,7 +245,11 @@ impl GridTransport for WsTransport {
     async fn open_pty(&self, tab_id: &str, _cols: u32, _rows: u32) -> Result<Box<dyn GridPtyChannel>, String> {
         let url = format!("{}/ws/pty?tab_id={}&token={}", self.base_url, tab_id, self.token);
         let (ws_stream, _) = connect_async(url).await.map_err(|e| e.to_string())?;
-        Ok(Box::new(WsPtyChannel { stream: ws_stream }))
+        let (writer, reader) = ws_stream.split();
+        Ok(Box::new(WsPtyChannel { 
+            writer: TokioMutex::new(writer), 
+            reader 
+        }))
     }
 
     async fn list_dir(&self, _path: &str) -> Result<RemoteDirContent, String> { Err("WS list_dir not yet implemented".to_string()) }
@@ -260,23 +264,24 @@ impl GridTransport for WsTransport {
     fn protocol_name(&self) -> &str { "WebSocket/WSS" }
 }
 
+type WsStream = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
 struct WsPtyChannel {
-    stream: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    writer: TokioMutex<SplitSink<WsStream, Message>>,
+    reader: SplitStream<WsStream>,
 }
 
 #[async_trait::async_trait]
 impl GridPtyChannel for WsPtyChannel {
     async fn write(&self, data: &[u8]) -> Result<(), String> {
-        // We need a mutable reference to send, but Trait defines &self. 
-        // This is a common pattern: use a Mutex inside for Send/Sync compliance.
-        // For brevity in this refactor, we assume WsPtyChannel is handled by one owner.
-        Err("Ws write requires internal mutability (impl planned)".to_string())
+        let mut writer = self.writer.lock().await;
+        writer.send(Message::Binary(data.to_vec().into())).await.map_err(|e| e.to_string())
     }
     async fn resize(&self, _cols: u32, _rows: u32) -> Result<(), String> { Ok(()) }
     async fn next_msg(&mut self) -> Option<PtyMessage> {
-        match self.stream.next().await {
-            Some(Ok(Message::Binary(bin))) => Some(PtyMessage::Data(bin)),
-            Some(Ok(Message::Text(txt))) => Some(PtyMessage::Data(txt.into_bytes())),
+        match self.reader.next().await {
+            Some(Ok(Message::Binary(bin))) => Some(PtyMessage::Data(bin.to_vec())),
+            Some(Ok(Message::Text(txt))) => Some(PtyMessage::Data(txt.as_bytes().to_vec())),
             Some(Ok(Message::Close(_))) | None => Some(PtyMessage::Close),
             _ => None,
         }
