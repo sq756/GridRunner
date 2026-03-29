@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted, useAttrs } from 'vue';
 import { type LayoutNode, globalState, storeActions } from '../store';
 import TileContainer from './TileContainer.vue';
 
@@ -52,6 +52,13 @@ onUnmounted(() => {
   document.removeEventListener('mousemove', handleMouseMove);
   document.removeEventListener('mouseup', stopResize);
 });
+
+const attrs = useAttrs();
+const forwardedAttrs = computed(() => {
+  const result = { ...attrs };
+  delete result.onFocus; // v3.1.9: Prevent focus theft loops in recursive layouts
+  return result;
+});
 </script>
 
 <template>
@@ -62,7 +69,7 @@ onUnmounted(() => {
     <template v-if="isSplit && node.children">
       <!-- Child 1 -->
       <div class="child-pane" :style="isHorizontal ? { width: node.ratio + '%' } : { height: node.ratio + '%' }">
-        <LayoutNodeRenderer :node="node.children[0]" :sharedProps="sharedProps" v-bind="$attrs" />
+        <LayoutNodeRenderer :node="node.children[0]" :sharedProps="sharedProps" v-bind="forwardedAttrs" />
       </div>
 
       <!-- Resizer -->
@@ -70,12 +77,12 @@ onUnmounted(() => {
 
       <!-- Child 2 -->
       <div class="child-pane" :style="isHorizontal ? { width: (100 - node.ratio) + '%' } : { height: (100 - node.ratio) + '%' }">
-        <LayoutNodeRenderer :node="node.children[1]" :sharedProps="sharedProps" v-bind="$attrs" />
+        <LayoutNodeRenderer :node="node.children[1]" :sharedProps="sharedProps" v-bind="forwardedAttrs" />
       </div>
     </template>
 
     <template v-else-if="node.type === 'widget'">
-      <TileContainer :zoneId="node.id" :widgetId="node.widgetId!" :widgetProps="sharedProps" v-bind="$attrs" />
+      <TileContainer :zoneId="node.id" :widgetId="node.widgetId!" :widgetProps="sharedProps" v-bind="forwardedAttrs" />
     </template>
   </div>
 </template>

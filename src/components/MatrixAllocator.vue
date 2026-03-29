@@ -22,7 +22,15 @@ const emit = defineEmits([
 
 <template>
   <div class="matrix-allocator">
-    <LayoutNodeRenderer :node="tree" :sharedProps="sharedProps" v-bind="$attrs" />
+    <LayoutNodeRenderer :node="tree" :sharedProps="sharedProps" 
+      @switch-tab="$emit('switch-tab', $event)"
+      @proc-context="$emit('proc-context', $event)"
+      @terminal-context="$emit('terminal-context', $event)"
+      @explorer-context="$emit('explorer-context', $event)"
+      @web-context="$emit('web-context', $event)"
+      @close-tab="$emit('close-tab', $event)"
+      @new-tab="$emit('new-tab', $event)"
+      @toggle-split="$emit('toggle-split', $event)" />
   </div>
 </template>
 

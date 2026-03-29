@@ -1,7 +1,7 @@
 import { onMounted, onUnmounted, type Ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { terminalManager } from '../TerminalManager';
-import { globalState, backendLogs, activeTabId, storeActions, type AgentRoleType } from '../store';
+import { globalState, backendLogs, activeTabId, storeActions, reconnectingIds, type AgentRoleType } from '../store';
 
 // --- Fragmentation Buffer State ---
 const rpcBuffers = new Map<string, string>();
@@ -111,7 +111,7 @@ export function usePtyListener(
 
     // 2. Legacy Interceptors (AutoPilot / Actions)
     // v2.18.0: Automatic Reconnection Trigger (moved from original but kept logic)
-    if (text.includes('[Process Completed]') && globalState.isConnected) {
+    if (text.includes('[Process Completed]') && globalState.isConnected && !reconnectingIds.has(id)) {
       storeActions.pushLog(`[SYSTEM] Connection loss detected on ${id}. Auto-recovery in 2s...`);
       setTimeout(() => { if (globalState.isConnected) storeActions.reconnectTab(id); }, 2000);
     }

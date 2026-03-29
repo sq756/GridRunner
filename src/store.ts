@@ -1,6 +1,6 @@
 /**
  * GRIDRUNNER GLOBAL STATE CENTER
- * v3.0.2: Corrected Recursive Layout Types & Star-Bus Integration
+ * v3.1.9: Recursive Layout Loops & Neural Bus Protection
  */
 
 import { reactive, computed, shallowRef, ref } from 'vue';
@@ -8,6 +8,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { terminalManager } from './TerminalManager';
 import { webviewManager } from './WebviewManager';
+
+const APP_VERSION = '3.1.9';
+const lastVersion = localStorage.getItem('ter_version');
+if (lastVersion !== APP_VERSION) {
+    localStorage.removeItem('ter_workspace_tree'); // Clear potentially corrupted layout
+    localStorage.setItem('ter_version', APP_VERSION);
+}
 
 // --- Agent Orchestrator Types ---
 export type AgentRoleType = 'ACTOR' | 'CRITIC' | 'SANDBOX' | 'AUDITOR' | 'SYSTEM';
@@ -160,8 +167,8 @@ const flushLogBuffer = () => {
 };
 
 // v3.0.1: Retry Circuit Breaker
-const retryCountMap: Record<string, number> = {};
-const reconnectingIds = new Set<string>();
+export const retryCountMap: Record<string, number> = {};
+export const reconnectingIds = reactive(new Set<string>());
 
 export const storeActions = {
   pushLog(log: string) {
@@ -301,6 +308,10 @@ export const storeActions = {
     this.pushLog(`[SYSTEM] Connection loss on ${id}. Auto-recovery in ${waitTime/1000}s...`);
     
     setTimeout(async () => {
+      if (!globalState.isConnected) {
+        reconnectingIds.delete(id);
+        return;
+      }
       this.pushLog(`[SYSTEM] Attempting recovery for ${id} (Attempt ${retryCountMap[id]}/3)...`);
       try {
         if (globalState.host === 'LOCAL') { 
@@ -315,7 +326,9 @@ export const storeActions = {
             reconnectingIds.delete(id);
           }
         }, 5000);
-        setTimeout(() => invoke('write_pty', { tabId: id, data: "\n\r" }), 500);
+        setTimeout(() => {
+            if (globalState.isConnected) invoke('write_pty', { tabId: id, data: "\n\r" });
+        }, 500);
       } catch (e) {
         this.pushLog(`[ERROR] Session recovery failed: ${e}`);
         reconnectingIds.delete(id);
@@ -341,6 +354,7 @@ export const storeActions = {
   },
 
   setPreset(name: 'RESEARCH' | 'DEV' | 'SIMULATION') {
+    if (globalState.workspaceTree.id === (name === 'RESEARCH' ? 'res-root' : name === 'DEV' ? 'dev-root' : 'root')) return;
     let tree: LayoutNode;
     if (name === 'RESEARCH') {
       tree = {
