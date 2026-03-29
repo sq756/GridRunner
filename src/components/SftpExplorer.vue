@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, inject } from 'vue';
-import { globalState } from '../store';
+import { globalState, storeActions } from '../store';
 import { realFiles, useExplorer } from '../composables/useExplorer';
+import { rpcBus } from '../rpcBus';
+import { invoke } from '@tauri-apps/api/core';
 
 const terActions = inject<any>('TER_ACTIONS');
 
@@ -33,8 +35,49 @@ const sortedFiles = computed(() => {
   });
 });
 
-const onItemClick = (f: any) => {
-  if (f.is_dir) changeDir(f.name);
+const onItemClick = async (f: any) => {
+  if (f.is_dir) {
+    changeDir(f.name);
+    return;
+  }
+
+  // v3.1.0: Neural File Dispatching
+  const ext = f.name.split('.').pop()?.toLowerCase();
+  const fullPath = (globalState.currentPath === '/' ? '' : globalState.currentPath) + '/' + f.name;
+
+  storeActions.pushLog(`[SFTP] Intent triggered for: ${f.name} (${ext})`);
+
+  try {
+    if (['pdf', 'html', 'htm'].includes(ext || '')) {
+      const virtualUrl = `grid-remote://${fullPath}`;
+      rpcBus.dispatch({
+        from: '@sftp',
+        target: '@pdf',
+        action: 'navigate',
+        payload: virtualUrl
+      });
+    } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext || '')) {
+      const virtualUrl = `grid-remote://${fullPath}`;
+      rpcBus.dispatch({
+        from: '@sftp',
+        target: '@plot',
+        action: 'reload_image',
+        payload: virtualUrl
+      });
+    } else if (['py', 'rs', 'js', 'ts', 'c', 'cpp', 'txt', 'md', 'json', 'go', 'yaml', 'yml'].includes(ext || '')) {
+      rpcBus.dispatch({
+        from: '@sftp',
+        target: '@editor',
+        action: 'open_file',
+        payload: { path: fullPath, name: f.name }
+      });
+    } else {
+      // 默认行为：常规下载
+      await invoke('download_file', { path: fullPath });
+    }
+  } catch (e) {
+    storeActions.pushLog(`[ERROR] File action failed: ${e}`);
+  }
 };
 
 const onContextMenu = (e: MouseEvent, file: any) => {

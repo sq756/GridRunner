@@ -105,6 +105,29 @@ class TerminalManager {
       const bytes = Array.isArray(rawData) ? new Uint8Array(rawData) : rawData;
       const text = typeof bytes === 'string' ? bytes : decoder.decode(bytes);
 
+      // v3.0: NEXUS RPC INTERCEPTION
+      if (text.includes('[GR_RPC]')) {
+        try {
+          const parts = text.split('[GR_RPC]');
+          if (parts.length > 1) {
+            const jsonStr = parts[1].split('\n')[0].trim();
+            const rpc = JSON.parse(jsonStr);
+            
+            // Map PTY ID to Zone ID using the active Layout
+            import('./rpcBus').then(({ rpcBus }) => {
+              // We find the node that represents this terminal
+              const node = Array.from(rpcBus.nodes.values()).find(n => n.label.includes(id));
+              rpcBus.dispatch({
+                from: node?.id || `@terminal-${id}`,
+                ...rpc
+              });
+            });
+          }
+        } catch (e) {
+          console.warn("[NEXUS] Failed to parse RPC from PTY:", e);
+        }
+      }
+
       // Execute hook if registered
       if (this.dataHook && this.dataHook(id, text, bytes)) {
         return; // Hook consumed the data (e.g. it was an RPC command)

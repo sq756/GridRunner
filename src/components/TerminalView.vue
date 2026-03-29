@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { listen } from '@tauri-apps/api/event';
 import { terminalManager } from '../TerminalManager';
 
 const props = defineProps<{
@@ -106,11 +105,8 @@ const initTerminal = async (retries = 5) => {
   }, 3000);
 };
 
-let unlistenDirect: any = null;
-
 onMounted(async () => {
   await initTerminal();
-  // v2.15.18: Removed individual listener as it's now handled by the manager for stability
 });
 
 onUnmounted(() => {
@@ -120,14 +116,12 @@ onUnmounted(() => {
 
 watch(() => props.active, async (isActive) => {
   if (isActive && terminalRef.value) {
-    // v2.17.2: Strategic Wait for UI stability
     await nextTick(); 
     
     requestAnimationFrame(async () => {
       if (terminalRef.value && terminalRef.value.offsetWidth > 0) {
         await terminalManager.mount(props.id, terminalRef.value);
         
-        // Final re-fit after a short burst to ensure stable dimensions
         setTimeout(() => {
           performFit();
           const instance = terminalManager.instances.get(props.id);
@@ -184,9 +178,7 @@ watch(() => props.id, async (newId, oldId) => {
   background: #000;
   overflow: hidden;
   position: relative;
-  /* Ensure it has a block layout */
   display: block;
-  /* v2.11.56: Rendering Isolation */
   contain: content;
   will-change: transform;
 }
@@ -230,7 +222,6 @@ watch(() => props.id, async (newId, oldId) => {
   background-color: #000 !important;
 }
 
-/* Fix xterm background transparency */
 .xterm-screen {
   background-color: #09090b !important;
 }

@@ -17,6 +17,7 @@ import CyberGate from './components/CyberGate.vue';
 import NetworkMatrix from './components/NetworkMatrix.vue';
 import MatrixAllocator from './components/MatrixAllocator.vue';
 import CyberCursor from './components/CyberCursor.vue';
+import CyberNexus from './components/CyberNexus.vue';
 
 // Composables
 import { useMorse } from './composables/useMorse';
@@ -121,19 +122,12 @@ const sharedProps = computed(() => ({
 
 const handleUpdateLayout = (layoutType: string) => {
   if (layoutType === 'classic') {
-    globalState.workspaceMatrix = {
-      version: 1, zoneLeft: 'SIDEBAR_PANEL', zoneMain: 'TERMINAL_MAIN', zoneRight: 'NONE', leftRatio: 25, rightRatio: 25
-    };
+    storeActions.setPreset('DEV');
   } else if (layoutType === 'developer') {
-    globalState.workspaceMatrix = {
-      version: 1, zoneLeft: 'SIDEBAR_PANEL', zoneMain: 'TERMINAL_MAIN', zoneRight: 'CYBER_HUD', leftRatio: 20, rightRatio: 30
-    };
+    storeActions.setPreset('DEV');
   } else if (layoutType === 'ops') {
-    globalState.workspaceMatrix = {
-      version: 1, zoneLeft: 'SIDEBAR_PANEL', zoneMain: 'TERMINAL_MAIN', zoneRight: 'SFTP_EXPLORER', leftRatio: 20, rightRatio: 20
-    };
+    storeActions.setPreset('RESEARCH');
   }
-  localStorage.setItem('ter_matrix', JSON.stringify(globalState.workspaceMatrix));
 };
 
 // ==========================================
@@ -506,6 +500,10 @@ const handleGlobalKeyDown = (e: KeyboardEvent) => {
     e.preventDefault();
     if (globalState.isConnected) createNewTab();
   }
+  // v2.19.0: Layout Presets Shortcuts
+  if (e.ctrlKey && e.shiftKey && e.key === '1') { e.preventDefault(); storeActions.setPreset('DEV'); }
+  if (e.ctrlKey && e.shiftKey && e.key === '2') { e.preventDefault(); storeActions.setPreset('RESEARCH'); }
+
   // v2.17.20: Terminal Font Scaling
   if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
     e.preventDefault();
@@ -525,6 +523,16 @@ const isCtrlPressed = ref(false);
 
 onMounted(async () => {
   await loadUIPreferences();
+  
+  // v3.1.0: Nexus Intent Listener
+  window.addEventListener('ter-nexus-intent', ((e: CustomEvent) => {
+    const { targetId } = e.detail;
+    if (targetId === '@pdf' || targetId === '@scholar' || targetId === '@plot') {
+      storeActions.pushLog(`[NEXUS] Auto-switching to RESEARCH_MODE to handle ${targetId}`);
+      storeActions.setPreset('RESEARCH');
+    }
+  }) as any);
+
   // v2.14.2: Force unlock on fresh load to prevent interaction freeze
   globalState.isLocked = false;
 
@@ -893,6 +901,12 @@ watch(() => showWebMenu.value, (val) => { if (val) activeMenu.value = 'web'; });
               SCAN
             </button>
             <span class="status-sep">|</span>
+            <button class="status-btn nexus-btn" 
+                    :class="{ 'active': globalState.showNexus }"
+                    @click="globalState.showNexus = !globalState.showNexus">
+              NEXUS
+            </button>
+            <span class="status-sep">|</span>
             <button class="status-btn web-toggle" 
                     :class="{ 'active': globalState.useNativeWebview }" 
                     @click="globalState.useNativeWebview = !globalState.useNativeWebview; localStorage.setItem('ter_use_native_webview', globalState.useNativeWebview.toString())"
@@ -922,6 +936,7 @@ watch(() => showWebMenu.value, (val) => { if (val) activeMenu.value = 'web'; });
     <MatrixScreen :isLocked="globalState.isLocked" :logs="backendLogs" :cpuUsage="currentCpuUsage ?? 0" @unlock="globalState.isLocked = false" />
     <NetworkMatrix v-if="globalState.showNetworkMatrix" :activeId="globalState.activeServerId" :activeTabId="activeTabId" @close="globalState.showNetworkMatrix = false" />
     <QuantumInspector :isOpen="globalState.showQuantumAudit" @close="globalState.showQuantumAudit = false" />
+    <CyberNexus :isOpen="globalState.showNexus" @close="globalState.showNexus = false" />
     <CyberCursor />
   </div>
 </template>

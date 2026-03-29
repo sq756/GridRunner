@@ -12,6 +12,7 @@ export const WIDGET_REGISTRY: Record<string, any> = {
   CYBER_HUD: markRaw(defineAsyncComponent(() => import('./components/CyberHUD.vue'))),
   RUNNING_PROCESSES: markRaw(defineAsyncComponent(() => import('./components/RunningProcesses.vue'))),
   AUTOPILOT_DASHBOARD: markRaw(defineAsyncComponent(() => import('./components/AutoPilotDashboard.vue'))),
+  IMAGE_VIEWER: markRaw(defineAsyncComponent(() => import('./components/CyberImageViewer.vue'))),
 };
 
 export type WidgetId = keyof typeof WIDGET_REGISTRY;

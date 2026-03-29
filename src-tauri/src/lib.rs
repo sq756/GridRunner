@@ -675,8 +675,18 @@ async fn spawn_local_pty(tab_id: String, app_handle: AppHandle, state: State<'_,
 
 #[tauri::command]
 async fn spawn_new_pty(tab_id: String, app_handle: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let transport = state.transport.lock().await.as_ref().ok_or("No active transport")?.clone();
-    let mut pty_channel = transport.open_pty(&tab_id, 80, 24).await?;
+    let transport_opt = state.transport.lock().await.clone();
+    let transport = transport_opt.ok_or("No active transport")?;
+    
+    // v2.18.9: Safely handle channel open failures
+    let mut pty_channel = match transport.open_pty(&tab_id, 80, 24).await {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("[PTY:{}] Critical spawn failure: {}", tab_id, e);
+            let _ = app_handle.emit("connection-lost", serde_json::json!({ "reason": e.to_string() }));
+            return Err(e);
+        }
+    };
     let (tx, mut rx) = mpsc::channel::<String>(100);
     let (ctrl_tx, mut ctrl_rx) = mpsc::channel::<PtyControl>(10);
     state.pty_channels.insert(tab_id.clone(), tx); state.ctrl_channels.insert(tab_id.clone(), ctrl_tx);
@@ -857,6 +867,41 @@ async fn upgrade_transport(url: String, token: String, state: State<'_, AppState
 pub fn run() {
     let _ = log::set_logger(&LOGGER); log::set_max_level(log::LevelFilter::Debug);
     let builder = tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("grid-remote", |app, request, responder| {
+            // v3.1.6: Non-blocking Async Asset Bridge
+            let path = request.uri().path().to_string();
+            let handle = app.app_handle().clone();
+            
+            tauri::async_runtime::spawn(async move {
+                let transport_opt: Option<Arc<dyn GridTransport>> = {
+                    let state = handle.state::<AppState>();
+                    let transport = state.transport.lock().await.clone();
+                    transport
+                };
+
+                if let Some(transport) = transport_opt {
+                    match transport.read_file(&path).await {
+                        Ok(data) => {
+                            let mime = if path.ends_with(".pdf") { "application/pdf" }
+                                        else if path.ends_with(".png") { "image/png" }
+                                        else if path.ends_with(".jpg") || path.ends_with(".jpeg") { "image/jpeg" }
+                                        else if path.ends_with(".html") { "text/html" }
+                                        else { "application/octet-stream" };
+                            
+                            let response = tauri::http::Response::builder()
+                                .header("Content-Type", mime)
+                                .header("Access-Control-Allow-Origin", "*")
+                                .body(data)
+                                .unwrap();
+                            responder.respond(response);
+                        }
+                        Err(_) => responder.respond(tauri::http::Response::builder().status(404).body(Vec::new()).unwrap()),
+                    }
+                } else {
+                    responder.respond(tauri::http::Response::builder().status(503).body(Vec::new()).unwrap());
+                }
+            });
+        })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

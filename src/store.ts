@@ -1,7 +1,13 @@
 /**
  * GRIDRUNNER GLOBAL STATE CENTER
- * v2.18.0: Multi-Protocol & Multi-Agent OS Ready
+ * v3.0.2: Corrected Recursive Layout Types & Star-Bus Integration
  */
+
+import { reactive, computed, shallowRef, ref } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { terminalManager } from './TerminalManager';
+import { webviewManager } from './WebviewManager';
 
 // --- Agent Orchestrator Types ---
 export type AgentRoleType = 'ACTOR' | 'CRITIC' | 'SANDBOX' | 'AUDITOR' | 'SYSTEM';
@@ -24,17 +30,18 @@ export interface RPCEvent {
   status: 'SENT' | 'CONSUMED' | 'FAILED';
 }
 
-import { reactive, computed, shallowRef, ref } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { terminalManager } from './TerminalManager';
-import { webviewManager } from './WebviewManager';
+// v2.19.0: Recursive Tiling Engine Types
+export type LayoutNode = {
+  id: string; // Unique instance ID
+  type: 'split-h' | 'split-v' | 'widget';
+  widgetId?: string; // Referring to WIDGET_REGISTRY
+  ratio?: number; // 0.0 to 100.0
+  children?: LayoutNode[];
+};
 
 /**
  * TER_CORE GLOBAL STATE CENTER
- * v2.14.1: Enhanced with actions for dynamic tiling.
  */
-
 export const globalState = reactive({
   // Connection State
   isConnected: false,
@@ -43,13 +50,15 @@ export const globalState = reactive({
   connectionStatus: 'disconnected' as 'connected' | 'busy' | 'disconnected',
 
   // UI State
-  gridLayout: { rows: 2, cols: 3 }, // v2.15.45: Default 2x3 grid
+  gridLayout: { rows: 2, cols: 3 }, 
   isSafeMode: localStorage.getItem('ter_safe_mode') === 'true',
-  useNativeWebview: localStorage.getItem('ter_use_native_webview') !== 'false', // Default true
+  useNativeWebview: localStorage.getItem('ter_use_native_webview') !== 'false', 
   showSettings: false,
   showNetworkMatrix: false,
   showQuantumAudit: false,
+  showNexus: false, // v3.0: Neural Bus Console
   isSidebarOpen: true,
+  isLocked: false,
   cyberMode: 0,
   sftpHeight: Number(localStorage.getItem('ter_sftp_height')) || 200,
   gridMode: localStorage.getItem('ter_grid_mode') === 'true',
@@ -58,7 +67,6 @@ export const globalState = reactive({
 
   // Explorer State
   currentPath: '/',
-
   currentAgentPort: null as number | null,
 
   // v2.18.0: Connection Metrics
@@ -70,21 +78,23 @@ export const globalState = reactive({
     timestamp: ''
   },
 
-  // Layout State (v2.14.7: Matrix Allocator)
-  workspaceMatrix: (() => {
+  // v2.19.0: Recursive Workspace Tree
+  workspaceTree: (() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('ter_matrix') || 'null');
-      if (saved && saved.version === 1) return saved;
-      return null;
-    } catch { return null; }
-  })() || {
-    version: 1,
-    zoneLeft: 'SIDEBAR_PANEL',
-    zoneMain: 'TERMINAL_MAIN',
-    zoneRight: 'NONE',
-    leftRatio: 25, // percentage
-    rightRatio: 25 // percentage
-  },
+      const saved = JSON.parse(localStorage.getItem('ter_workspace_tree') || 'null');
+      if (saved) return saved;
+    } catch { }
+    // Default: Simple split with Sidebar and Main Terminal
+    return {
+      id: 'root',
+      type: 'split-h',
+      ratio: 25,
+      children: [
+        { id: 'side-node', type: 'widget', widgetId: 'SIDEBAR_PANEL' },
+        { id: 'main-node', type: 'widget', widgetId: 'TERMINAL_MAIN' }
+      ]
+    } as LayoutNode;
+  })(),
 
   focusedPane: 'primary' as 'primary' | 'secondary',
 
@@ -106,7 +116,7 @@ export const globalState = reactive({
     controlLogs: [] as RPCEvent[]
   },
 
-  // Cursor State (v2.14.14)
+  // Cursor State
   cursorConfig: (() => {
     try {
       const saved = JSON.parse(localStorage.getItem('ter_cursor') || 'null');
@@ -149,14 +159,14 @@ const flushLogBuffer = () => {
   logThrottleId = null;
 };
 
-// v2.18.5: Retry Circuit Breaker
+// v3.0.1: Retry Circuit Breaker
 const retryCountMap: Record<string, number> = {};
+const reconnectingIds = new Set<string>();
 
 export const storeActions = {
   pushLog(log: string) {
     logBuffer.push(log);
     if (!logThrottleId) {
-      // Throttle DOM updates to approximately 60fps (16ms) or 50ms batching
       logThrottleId = setTimeout(flushLogBuffer, 50);
     }
   },
@@ -192,14 +202,8 @@ export const storeActions = {
   async setNativeWebview(val: boolean) {
     globalState.useNativeWebview = val;
     localStorage.setItem('ter_use_native_webview', val.toString());
-
-    // v2.15.36: Stable Dynamic Engine Switch
     if (!val) {
-      try {
-        await webviewManager.destroyAll();
-      } catch (e) {
-        console.error("Failed to cleanup native windows:", e);
-      }
+      try { await webviewManager.destroyAll(); } catch (e) {}
     }
   },
 
@@ -209,8 +213,6 @@ export const storeActions = {
     if (t) {
       t.isBackground = false;
       activeTabId.value = id;
-      
-      // v2.18.2: Automatic UI Expansion
       globalState.isSidebarOpen = true;
       window.dispatchEvent(new CustomEvent('switch-sidebar-view', { detail: 'OPS' }));
     }
@@ -218,24 +220,17 @@ export const storeActions = {
 
   async createNewTab(title = "SHELL", viewType: any = 'terminal', data: any = {}, skipPty = false, existingId?: string, isUserAction = false) {
     const id = existingId || 'tab-' + Math.random().toString(36).substr(2, 9);
-    console.log(`[TER_CORE] Creating tab: ${id} (${title}) type: ${viewType}`);
-
-    // Bug 1 Fix: If tab already exists, just activate it — do NOT re-spawn PTY
+    
     const alreadyExists = terminalTabs.value.find(t => t.id === id);
     if (alreadyExists) {
       alreadyExists.isBackground = false;
-      if (splitMode.value && activeTabId.value) {
-        activeTabIdSecondary.value = id;
-      } else {
-        activeTabId.value = id;
-      }
+      if (splitMode.value && activeTabId.value) { activeTabIdSecondary.value = id; } 
+      else { activeTabId.value = id; }
       
-      // v2.18.5: Focus and expand UI only on user action to prevent hijacking
       if (isUserAction) {
         globalState.isSidebarOpen = true;
         window.dispatchEvent(new CustomEvent('switch-sidebar-view', { detail: 'OPS' }));
       }
-      
       window.dispatchEvent(new CustomEvent('ter-tab-activity', { detail: { id, timestamp: Date.now() } }));
       return id;
     }
@@ -252,37 +247,25 @@ export const storeActions = {
           try {
             await invoke('spawn_local_pty', { tabId: id });
             setTimeout(() => invoke('write_pty', { tabId: id, data: "\n\r" }), 500);
-          } catch (e) {
-            storeActions.pushLog(`[ERROR] PTY Spawn fail for ${id}: ${e}`);
-          }
+          } catch (e) { this.pushLog(`[ERROR] PTY Spawn fail for ${id}: ${e}`); }
         } else {
           try {
             await invoke('spawn_new_pty', { tabId: id, initialRows: 30, initialCols: 100 });
             setTimeout(() => invoke('write_pty', { tabId: id, data: "\n\r" }), 500);
-          } catch (e) {
-            storeActions.pushLog(`[ERROR] PTY Spawn fail for ${id}: ${e}`);
-          }
+          } catch (e) { this.pushLog(`[ERROR] PTY Spawn fail for ${id}: ${e}`); }
         }
       }
     }
 
     terminalTabs.value.push({ id, title, viewType, data, isBackground: false });
+    if (splitMode.value && activeTabId.value) { activeTabIdSecondary.value = id; } 
+    else { activeTabId.value = id; }
 
-    if (splitMode.value && activeTabId.value) {
-      activeTabIdSecondary.value = id;
-    } else {
-      activeTabId.value = id;
-    }
-
-    // v2.18.5: Expand sidebar ONLY if user explicitly opened this tab
     if (isUserAction) {
         globalState.isSidebarOpen = true;
         window.dispatchEvent(new CustomEvent('switch-sidebar-view', { detail: 'OPS' }));
     }
-
-    // Sync activity for the sidebar indicator
     window.dispatchEvent(new CustomEvent('ter-tab-activity', { detail: { id, timestamp: Date.now() } }));
-
     return id;
   },
 
@@ -302,131 +285,137 @@ export const storeActions = {
 
   async reconnectTab(id: string) {
     const tab = terminalTabs.value.find(t => t.id === id);
-    if (!tab || tab.viewType !== 'terminal') return;
+    if (!tab || tab.viewType !== 'terminal' || reconnectingIds.has(id)) return;
     
-    // v2.18.5: Circuit Breaker Logic
+    // v3.0.1: Smart Circuit Breaker with Exponential Backoff
     const currentRetries = retryCountMap[id] || 0;
     if (currentRetries >= 3) {
-      storeActions.pushLog(`[FATAL] Session ${id} reached retry limit. Stopping auto-recovery to prevent UI lock.`);
+      this.pushLog(`[FATAL] Session ${id} reached retry limit. Stopping auto-recovery.`);
+      reconnectingIds.delete(id);
       return;
     }
     
+    reconnectingIds.add(id);
+    const waitTime = Math.pow(2, currentRetries) * 1000;
     retryCountMap[id] = currentRetries + 1;
-    storeActions.pushLog(`[SYSTEM] Attempting automatic session recovery for ${id} (Attempt ${retryCountMap[id]}/3)...`);
+    this.pushLog(`[SYSTEM] Connection loss on ${id}. Auto-recovery in ${waitTime/1000}s...`);
     
-    try {
-      if (globalState.host === 'LOCAL') {
-        await invoke('spawn_local_pty', { tabId: id });
-      } else {
-        await invoke('spawn_new_pty', { tabId: id, initialRows: 30, initialCols: 100 });
+    setTimeout(async () => {
+      this.pushLog(`[SYSTEM] Attempting recovery for ${id} (Attempt ${retryCountMap[id]}/3)...`);
+      try {
+        if (globalState.host === 'LOCAL') { 
+          await invoke('spawn_local_pty', { tabId: id }); 
+        } else { 
+          await invoke('spawn_new_pty', { tabId: id }); 
+        }
+        
+        setTimeout(() => {
+          if (terminalTabs.value.find(t => t.id === id)) { 
+            retryCountMap[id] = 0; 
+            reconnectingIds.delete(id);
+          }
+        }, 5000);
+        setTimeout(() => invoke('write_pty', { tabId: id, data: "\n\r" }), 500);
+      } catch (e) {
+        this.pushLog(`[ERROR] Session recovery failed: ${e}`);
+        reconnectingIds.delete(id);
       }
-      // Send a newline to trigger prompt refresh
-      setTimeout(() => invoke('write_pty', { tabId: id, data: "\n\r" }), 500);
-      storeActions.pushLog(`[SUCCESS] Session ${id} recovered.`);
-      // Reset retry count on success
-      retryCountMap[id] = 0;
-    } catch (e) {
-      storeActions.pushLog(`[ERROR] Session recovery failed for ${id}: ${e}`);
-    }
+    }, waitTime);
   },
 
-  // Bug 6 Fix: Rename tab and sync tmux session name
   async renameTab(id: string, newName: string) {
     const tab = terminalTabs.value.find(t => t.id === id);
     if (tab) {
       tab.title = newName;
-      // Send tmux rename-session command
       if (globalState.isConnected && globalState.host !== 'LOCAL' && tab.viewType === 'terminal') {
-        try {
-          // Ctrl-B + $ calls tmux rename-session interactively; use direct command instead
-          await invoke('write_pty', { tabId: id, data: `tmux rename-session -t ${id} "${newName.replace(/"/g, '_')}"\r` });
-        } catch (e) { /* non-critical */ }
+        try { await invoke('write_pty', { tabId: id, data: `tmux rename-session -t ${id} "${newName.replace(/"/g, '_')}"\r` }); } catch (e) { }
       }
     }
   },
 
-  // --- AutoPilot Orchestration Actions ---
+  // v2.19.0: Workspace Layout Control
+  updateLayout(newTree: LayoutNode) {
+    globalState.workspaceTree = newTree;
+    localStorage.setItem('ter_workspace_tree', JSON.stringify(newTree));
+    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 100);
+  },
+
+  setPreset(name: 'RESEARCH' | 'DEV' | 'SIMULATION') {
+    let tree: LayoutNode;
+    if (name === 'RESEARCH') {
+      tree = {
+        id: 'res-root', type: 'split-h', ratio: 20, children: [
+          { id: 'side-node', type: 'widget', widgetId: 'SIDEBAR_PANEL' },
+          { id: 'res-right-split', type: 'split-h', ratio: 60, children: [
+              { id: 'res-mid-v', type: 'split-v', ratio: 70, children: [
+                  { id: '@actor', type: 'widget', widgetId: 'TERMINAL_MAIN' }, 
+                  { id: '@gemini', type: 'widget', widgetId: 'RUNNING_PROCESSES' } 
+              ]},
+              { id: 'res-paper-v', type: 'split-v', ratio: 50, children: [
+                  { id: '@plot', type: 'widget', widgetId: 'IMAGE_VIEWER' }, 
+                  { id: '@scholar', type: 'widget', widgetId: 'CYBER_HUD' } 
+              ]}
+          ]}
+        ]
+      };
+    } else if (name === 'DEV') {
+      tree = {
+        id: 'dev-root', type: 'split-h', ratio: 70, children: [
+          { id: '@editor', type: 'widget', widgetId: 'TERMINAL_MAIN' },
+          { id: 'dev-right-v', type: 'split-v', ratio: 50, children: [
+            { id: '@terminal', type: 'widget', widgetId: 'TERMINAL_MAIN' },
+            { id: '@ai', type: 'widget', widgetId: 'SIDEBAR_PANEL' }
+          ]}
+        ]
+      };
+    } else {
+       tree = { id: 'root', type: 'split-h', ratio: 25, children: [
+         { id: 'side', type: 'widget', widgetId: 'SIDEBAR_PANEL' },
+         { id: 'main', type: 'widget', widgetId: 'TERMINAL_MAIN' }
+       ]};
+    }
+    this.updateLayout(tree);
+  },
+
   dispatchRPC(from: AgentRoleType, rawMessage: any) {
     const ap = globalState.autoPilot;
     const { target, action, payload } = rawMessage;
-    
-    const event: RPCEvent = {
-      id: Math.random().toString(36).substring(2, 9),
-      timestamp: Date.now(),
-      fromRole: from as AgentRoleType,
-      toRole: (target || 'BROADCAST').replace('@', '') as AgentRoleType,
-      action,
-      payload,
-      status: 'SENT'
-    };
-
+    const event: any = { id: Math.random().toString(36).substring(2, 9), timestamp: Date.now(), fromRole: from, toRole: (target || 'BROADCAST').replace('@', ''), action, payload, status: 'SENT' };
     ap.controlLogs.unshift(event);
     if (ap.controlLogs.length > 100) ap.controlLogs.pop();
-
-    if (ap.isPaused && action !== 'abort' && action !== 'terminate') {
-      event.status = 'FAILED';
-      return;
-    }
-
-    // Role-Based Virtual Routing
+    if (ap.isPaused && action !== 'abort' && action !== 'terminate') { event.status = 'FAILED'; return; }
     const routeTo = (role: string, data: string) => {
       const binding = ap.roles[role];
-      if (binding && binding.tabId) {
-        invoke('write_pty', { tabId: binding.tabId, data });
-        return true;
-      }
+      if (binding && binding.tabId) { invoke('write_pty', { tabId: binding.tabId, data }); return true; }
       return false;
     };
-
     try {
       switch (action) {
-        case 'input':
-          if (target && target.startsWith('@')) {
-            const role = target.substring(1);
-            if (routeTo(role, payload + '\r')) event.status = 'CONSUMED';
-          }
-          break;
-        
-        case 'terminate':
-          storeActions.pushLog(`[🎉] TASK_COMPLETED: ${payload || 'Goal reached.'}`);
-          ap.isActive = false;
-          event.status = 'CONSUMED';
-          break;
-
-        case 'abort':
-          storeActions.pushLog(`[⚠️] TASK_ABORTED: ${payload}`);
-          ap.isPaused = true;
-          event.status = 'CONSUMED';
-          break;
-
-        case 'evaluate_result':
-          ap.currentScore = payload.score || 0;
-          ap.lastCriticFeedback = payload.feedback || "";
-          if (ap.currentScore >= ap.targetScore) {
-            this.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'terminate', payload: 'Score threshold reached.' });
-          } else {
-            // Forward feedback to Actor to continue
-            this.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'input', payload: `Score: ${ap.currentScore}. Feedback: ${ap.lastCriticFeedback}` });
-          }
-          event.status = 'CONSUMED';
-          break;
+        case 'input': if (target && target.startsWith('@')) { const role = target.substring(1); if (routeTo(role, payload + '\r')) event.status = 'CONSUMED'; } break;
+        case 'terminate': this.pushLog(`[🎉] TASK_COMPLETED: ${payload || 'Goal reached.'}`); ap.isActive = false; event.status = 'CONSUMED'; break;
+        case 'abort': this.pushLog(`[⚠️] TASK_ABORTED: ${payload}`); ap.isPaused = true; event.status = 'CONSUMED'; break;
+        case 'evaluate_result': ap.currentScore = payload.score || 0; ap.lastCriticFeedback = payload.feedback || "";
+          if (ap.currentScore >= ap.targetScore) { this.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'terminate', payload: 'Score threshold reached.' }); } 
+          else { this.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'input', payload: `Score: ${ap.currentScore}. Feedback: ${ap.lastCriticFeedback}` }); }
+          event.status = 'CONSUMED'; break;
       }
-    } catch (e) {
-      event.status = 'FAILED';
-      console.error("[Orchestrator] Dispatch error:", e);
-    }
+    } catch (e) { event.status = 'FAILED'; console.error("[Orchestrator] Dispatch error:", e); }
   },
 
   bindRole(role: string, tabId: string | null) {
     const r = globalState.autoPilot.roles[role];
-    if (r) {
-      r.tabId = tabId;
-      r.status = tabId ? 'IDLE' : 'DISCONNECTED';
-    }
+    if (r) { r.tabId = tabId; r.status = tabId ? 'IDLE' : 'DISCONNECTED'; }
   }
 };
 
 // Auto-register Listeners
 listen('connection-metrics', (event: any) => {
   storeActions.updateMetrics(event.payload);
+});
+
+listen('connection-lost', (event: any) => {
+  console.error("[GR_CORE] Connection lost:", event.payload);
+  storeActions.setConnected(false);
+  globalState.currentAgentPort = null;
+  storeActions.pushLog(`[ERROR] Critical Link Failure: ${event.payload.reason || 'Unknown'}`);
 });
