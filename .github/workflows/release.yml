@@ -61,7 +61,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
-          cache-dependency-path: ter_agent/go.sum
+          cache-dependency-path: gr_agent/go.sum
 
       - name: Sync node version and setup cache
         uses: actions/setup-node@v4
@@ -75,7 +75,7 @@ jobs:
       - name: Build Agent
         shell: bash
         run: |
-          cd ter_agent
+          cd gr_agent
           GOOS=${{ matrix.goos }} GOARCH=amd64 go build -o ${{ matrix.binary_name }} main.go || true
           cd ..
 

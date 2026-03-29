@@ -1,4 +1,4 @@
-module ter_agent
+module gr_agent
 
 go 1.21.0
 
