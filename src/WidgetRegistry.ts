@@ -11,6 +11,7 @@ export const WIDGET_REGISTRY: Record<string, any> = {
   SIDEBAR_PANEL: markRaw(defineAsyncComponent(() => import('./components/SidebarPanel.vue'))),
   CYBER_HUD: markRaw(defineAsyncComponent(() => import('./components/CyberHUD.vue'))),
   RUNNING_PROCESSES: markRaw(defineAsyncComponent(() => import('./components/RunningProcesses.vue'))),
+  AUTOPILOT_DASHBOARD: markRaw(defineAsyncComponent(() => import('./components/AutoPilotDashboard.vue'))),
 };
 
 export type WidgetId = keyof typeof WIDGET_REGISTRY;

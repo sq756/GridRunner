@@ -1,3 +1,29 @@
+/**
+ * GRIDRUNNER GLOBAL STATE CENTER
+ * v2.18.0: Multi-Protocol & Multi-Agent OS Ready
+ */
+
+// --- Agent Orchestrator Types ---
+export type AgentRoleType = 'ACTOR' | 'CRITIC' | 'SANDBOX' | 'AUDITOR' | 'SYSTEM';
+
+export interface RoleBinding {
+  role: AgentRoleType;
+  tabId: string | null;
+  status: 'IDLE' | 'BUSY' | 'DISCONNECTED';
+  label: string;
+  icon: string;
+}
+
+export interface RPCEvent {
+  id: string;
+  timestamp: number;
+  fromRole: AgentRoleType | 'HUMAN';
+  toRole: AgentRoleType | 'BROADCAST' | 'HUMAN' | 'SYSTEM';
+  action: string;
+  payload: any;
+  status: 'SENT' | 'CONSUMED' | 'FAILED';
+}
+
 import { reactive, computed, shallowRef, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -61,6 +87,24 @@ export const globalState = reactive({
   },
 
   focusedPane: 'primary' as 'primary' | 'secondary',
+
+  // --- AutoPilot / Multi-Agent State ---
+  autoPilot: {
+    isActive: false,
+    isPaused: false,
+    objective: "",
+    currentIteration: 0,
+    maxIterations: 15,
+    currentScore: 0,
+    targetScore: 90,
+    lastCriticFeedback: "",
+    roles: {
+      ACTOR: { role: 'ACTOR', tabId: null, status: 'DISCONNECTED', label: '执行者', icon: '👷' },
+      CRITIC: { role: 'CRITIC', tabId: null, status: 'DISCONNECTED', label: '评价者', icon: '🧐' },
+      SANDBOX: { role: 'SANDBOX', tabId: null, status: 'DISCONNECTED', label: '沙盒', icon: '🖥️' }
+    } as Record<string, RoleBinding>,
+    controlLogs: [] as RPCEvent[]
+  },
 
   // Cursor State (v2.14.14)
   cursorConfig: (() => {
@@ -267,6 +311,86 @@ export const storeActions = {
           await invoke('write_pty', { tabId: id, data: `tmux rename-session -t ${id} "${newName.replace(/"/g, '_')}"\r` });
         } catch (e) { /* non-critical */ }
       }
+    }
+  },
+
+  // --- AutoPilot Orchestration Actions ---
+  dispatchRPC(from: AgentRoleType, rawMessage: any) {
+    const ap = globalState.autoPilot;
+    const { target, action, payload } = rawMessage;
+    
+    const event: RPCEvent = {
+      id: Math.random().toString(36).substring(2, 9),
+      timestamp: Date.now(),
+      fromRole: from as AgentRoleType,
+      toRole: (target || 'BROADCAST').replace('@', '') as AgentRoleType,
+      action,
+      payload,
+      status: 'SENT'
+    };
+
+    ap.controlLogs.unshift(event);
+    if (ap.controlLogs.length > 100) ap.controlLogs.pop();
+
+    if (ap.isPaused && action !== 'abort' && action !== 'terminate') {
+      event.status = 'FAILED';
+      return;
+    }
+
+    // Role-Based Virtual Routing
+    const routeTo = (role: string, data: string) => {
+      const binding = ap.roles[role];
+      if (binding && binding.tabId) {
+        invoke('write_pty', { tabId: binding.tabId, data });
+        return true;
+      }
+      return false;
+    };
+
+    try {
+      switch (action) {
+        case 'input':
+          if (target && target.startsWith('@')) {
+            const role = target.substring(1);
+            if (routeTo(role, payload + '\r')) event.status = 'CONSUMED';
+          }
+          break;
+        
+        case 'terminate':
+          storeActions.pushLog(`[🎉] TASK_COMPLETED: ${payload || 'Goal reached.'}`);
+          ap.isActive = false;
+          event.status = 'CONSUMED';
+          break;
+
+        case 'abort':
+          storeActions.pushLog(`[⚠️] TASK_ABORTED: ${payload}`);
+          ap.isPaused = true;
+          event.status = 'CONSUMED';
+          break;
+
+        case 'evaluate_result':
+          ap.currentScore = payload.score || 0;
+          ap.lastCriticFeedback = payload.feedback || "";
+          if (ap.currentScore >= ap.targetScore) {
+            this.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'terminate', payload: 'Score threshold reached.' });
+          } else {
+            // Forward feedback to Actor to continue
+            this.dispatchRPC('SYSTEM', { target: '@ACTOR', action: 'input', payload: `Score: ${ap.currentScore}. Feedback: ${ap.lastCriticFeedback}` });
+          }
+          event.status = 'CONSUMED';
+          break;
+      }
+    } catch (e) {
+      event.status = 'FAILED';
+      console.error("[Orchestrator] Dispatch error:", e);
+    }
+  },
+
+  bindRole(role: string, tabId: string | null) {
+    const r = globalState.autoPilot.roles[role];
+    if (r) {
+      r.tabId = tabId;
+      r.status = tabId ? 'IDLE' : 'DISCONNECTED';
     }
   }
 };
