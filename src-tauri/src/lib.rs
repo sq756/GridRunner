@@ -236,6 +236,7 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use futures_util::{StreamExt, SinkExt, stream::{SplitSink, SplitStream}};
 use std::net::SocketAddr;
 
+#[derive(Debug)]
 struct SkipServerVerification;
 impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
     fn verify_server_cert(&self, _end_entity: &rustls::pki_types::CertificateDer<'_>, _intermediates: &[rustls::pki_types::CertificateDer<'_>], _server_name: &rustls::pki_types::ServerName<'_>, _ocsp_response: &[u8], _now: rustls::pki_types::UnixTime) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
@@ -268,7 +269,7 @@ impl GridTransport for QuicTransport {
         let len = id_bytes.len().min(64);
         handshake[..len].copy_from_slice(&id_bytes[..len]);
         stream.0.write_all(&handshake[..len]).await.map_err(|e| e.to_string())?;
-        Ok(Box::new(QuicPtyChannel { send: stream.0, recv: stream.1 }))
+        Ok(Box::new(QuicPtyChannel { send: TokioMutex::new(stream.0), recv: stream.1 }))
     }
     async fn list_dir(&self, _path: &str) -> Result<RemoteDirContent, String> { Err("QUIC list_dir not yet implemented".to_string()) }
     async fn read_file(&self, _path: &str) -> Result<Vec<u8>, String> { Err("QUIC read_file not yet implemented".to_string()) }
@@ -283,15 +284,15 @@ impl GridTransport for QuicTransport {
 }
 
 struct QuicPtyChannel {
-    send: quinn::SendStream,
+    send: TokioMutex<quinn::SendStream>,
     recv: quinn::RecvStream,
 }
 
 #[async_trait::async_trait]
 impl GridPtyChannel for QuicPtyChannel {
-    async fn write(&self, _data: &[u8]) -> Result<(), String> {
-        // For production, wrap send in Mutex like WebSocket
-        Err("QUIC write requires internal mutability (impl planned)".to_string())
+    async fn write(&self, data: &[u8]) -> Result<(), String> {
+        let mut send = self.send.lock().await;
+        send.write_all(data).await.map_err(|e| e.to_string())
     }
     async fn resize(&self, _cols: u32, _rows: u32) -> Result<(), String> { Ok(()) }
     async fn next_msg(&mut self) -> Option<PtyMessage> {

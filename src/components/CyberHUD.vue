@@ -9,33 +9,77 @@ const props = defineProps<{
   zoneId: string;
 }>();
 
+const isSwitchingProtocol = ref(false);
+const showProtocolMenu = ref(false);
+const protocolMenuPos = ref({ x: 0, y: 0 });
+
 const handleReconnect = async () => {
   if (!globalState.activeServerId) {
     storeActions.pushLog('[WARN] No active server ID to reconnect to.');
     return;
   }
 
+  isSwitchingProtocol.value = true;
+  
   // v2.18.0: Protocol-Aware Intelligent Reconnection
   if (globalState.isConnected && globalState.currentAgentPort) {
-    storeActions.pushLog(`[SYSTEM] Attempting protocol upgrade to WebSocket (Port: ${globalState.currentAgentPort})...`);
+    const nextProtocol = globalState.connectionMetrics.protocol === 'SSH/TCP' ? 'WS' : 'QUIC';
+    storeActions.pushLog(`[SYSTEM] Initiating Protocol Transition to ${nextProtocol}...`);
+    
     try {
-      await invoke('upgrade_transport', { 
-        url: `ws://${globalState.host}:${globalState.currentAgentPort}`, 
-        token: globalState.agentToken 
-      });
-      storeActions.pushLog('[SUCCESS] Connection upgraded to high-performance WebSocket.');
+      if (nextProtocol === 'WS') {
+        await invoke('upgrade_transport', { 
+          url: `ws://${globalState.host}:${globalState.currentAgentPort}`, 
+          token: globalState.agentToken 
+        });
+      } else {
+        // QUIC uses specific port (usually HTTP port + 1)
+        await invoke('upgrade_transport', { 
+          url: `quic://${globalState.host}:${globalState.currentAgentPort + 1}`, 
+          token: globalState.agentToken 
+        });
+      }
+      storeActions.pushLog(`[SUCCESS] Kernel synchronized via ${nextProtocol}.`);
+      isSwitchingProtocol.value = false;
       return;
     } catch (e) {
-      storeActions.pushLog(`[INFO] Upgrade skipped or failed: ${e}. Falling back to standard check.`);
+      storeActions.pushLog(`[INFO] Transition failed: ${e}.`);
     }
   }
 
-  storeActions.pushLog('[SYSTEM] Full link restoration initiated...');
+  storeActions.pushLog('[SYSTEM] Emergency Link Restoration initiated...');
   try {
     await invoke('connect_with_id', { id: globalState.activeServerId });
-    storeActions.pushLog('[SUCCESS] Remote link restored via SSH.');
+    storeActions.pushLog('[SUCCESS] Remote link restored.');
   } catch (e) {
-    storeActions.pushLog(`[ERROR] Restoration failed: ${e}`);
+    storeActions.pushLog(`[ERROR] Critical Link Failure: ${e}`);
+  } finally {
+    isSwitchingProtocol.value = false;
+  }
+};
+
+const onProtocolContextMenu = (e: MouseEvent) => {
+  e.preventDefault();
+  protocolMenuPos.value = { x: e.clientX, y: e.clientY };
+  showProtocolMenu.value = true;
+};
+
+const forceSwitchProtocol = async (p: 'SSH' | 'WS' | 'QUIC') => {
+  showProtocolMenu.value = false;
+  isSwitchingProtocol.value = true;
+  try {
+    if (p === 'SSH') {
+      await invoke('connect_with_id', { id: globalState.activeServerId });
+    } else {
+      const port = globalState.currentAgentPort || 34567;
+      const url = p === 'WS' ? `ws://${globalState.host}:${port}` : `quic://${globalState.host}:${port + 1}`;
+      await invoke('upgrade_transport', { url, token: globalState.agentToken });
+    }
+    storeActions.pushLog(`[SYSTEM] Forced protocol switch to ${p} complete.`);
+  } catch (e) {
+    storeActions.pushLog(`[ERROR] Forced switch to ${p} failed: ${e}`);
+  } finally {
+    isSwitchingProtocol.value = false;
   }
 };
 
@@ -177,20 +221,28 @@ const getSlotStyle = (idx: number) => {
         <div class="kernel-diagnostic-light" 
              style="cursor: pointer;"
              @click="handleReconnect"
-             :class="{ 'is-direct': globalState.connectionMetrics.isDirect }"
-             :title="`PROTOCOL: ${globalState.connectionMetrics.protocol}\nLATENCY: ${globalState.connectionMetrics.latency}ms\nRELAY: ${globalState.connectionMetrics.relay || 'NONE'}\n\nClick to Reconnect`">
+             @contextmenu="onProtocolContextMenu"
+             :class="{ 
+               'is-direct': globalState.connectionMetrics.isDirect,
+               'is-switching': isSwitchingProtocol 
+             }"
+             :title="`PROTOCOL: ${globalState.connectionMetrics.protocol}\nLATENCY: ${globalState.connectionMetrics.latency}ms\n\nLEFT CLICK: Smart Upgrade\nRIGHT CLICK: Force Select` ">
           <div class="status-dot" :class="{ 
-            'direct': globalState.connectionMetrics.isDirect,
-            'relay': globalState.connectionMetrics.relay,
-            'ssh': globalState.connectionMetrics.protocol === 'SSH/TCP'
+            'direct': globalState.connectionMetrics.isDirect && !isSwitchingProtocol,
+            'relay': globalState.connectionMetrics.relay && !isSwitchingProtocol,
+            'ssh': globalState.connectionMetrics.protocol === 'SSH/TCP' && !isSwitchingProtocol,
+            'syncing': isSwitchingProtocol
           }"></div>
           <span class="metrics-label">
-            <span v-if="globalState.connectionMetrics.isDirect" class="direct-tag">● DIRECT</span>
-            <span v-else-if="globalState.connectionMetrics.relay" class="relay-tag">▲ RELAY</span>
-            {{ globalState.connectionMetrics.protocol }} 
-            <span class="latency" v-if="globalState.connectionMetrics.latency > 0">
-              {{ globalState.connectionMetrics.latency }}ms
-            </span>
+            <template v-if="isSwitchingProtocol">SYNCING_KERNEL...</template>
+            <template v-else>
+              <span v-if="globalState.connectionMetrics.isDirect" class="direct-tag">● DIRECT</span>
+              <span v-else-if="globalState.connectionMetrics.relay" class="relay-tag">▲ RELAY</span>
+              {{ globalState.connectionMetrics.protocol }} 
+              <span class="latency" v-if="globalState.connectionMetrics.latency > 0">
+                {{ globalState.connectionMetrics.latency }}ms
+              </span>
+            </template>
           </span>
         </div>
 
@@ -274,7 +326,7 @@ const getSlotStyle = (idx: number) => {
     <div v-if="showGridMenu" 
          class="grid-context-menu" 
          :style="{ top: gridMenuPos.y + 'px', left: gridMenuPos.x + 'px' }"
-         v-on-click-outside="() => showGridMenu = false">
+         @click="showGridMenu = false">
       <header>GRID_LAYOUT_PRESETS</header>
       <div class="menu-item" @click="setGridLayout(2, 3)">2 x 3 (Classic)</div>
       <div class="menu-item" @click="setGridLayout(3, 3)">3 x 3 (Standard)</div>
@@ -283,10 +335,64 @@ const getSlotStyle = (idx: number) => {
       <div class="menu-separator"></div>
       <div class="menu-item disabled">CUSTOM_LAYOUT...</div>
     </div>
-  </div>
-</template>
 
-<style scoped>
+    <!-- v2.18.0: Protocol Control Menu -->
+    <div v-if="showProtocolMenu" 
+         class="grid-context-menu protocol-menu" 
+         :style="{ top: protocolMenuPos.y + 'px', left: protocolMenuPos.x + 'px' }"
+         v-on-click-outside="() => showProtocolMenu = false">
+      <header>KERNEL_PROTOCOL_CONTROL</header>
+      <div class="menu-item" @click="forceSwitchProtocol('SSH')">
+        <span class="p-icon">🔒</span> FORCE_SSH (TCP/22)
+      </div>
+      <div class="menu-item" @click="forceSwitchProtocol('WS')" :class="{ 'disabled': !globalState.currentAgentPort }">
+        <span class="p-icon">🌐</span> UPGRADE_WS (TCP/WSS)
+      </div>
+      <div class="menu-item" @click="forceSwitchProtocol('QUIC')" :class="{ 'disabled': !globalState.currentAgentPort }">
+        <span class="p-icon">⚡</span> ACTIVATE_QUIC (UDP/QUIC)
+      </div>
+      <div class="menu-separator"></div>
+      <div class="menu-info">AGENT_PORT: {{ globalState.currentAgentPort || 'OFFLINE' }}</div>
+    </div>
+    </div>
+    </template>
+
+    <style scoped>
+    .protocol-menu {
+    border-color: #3b82f644;
+    }
+    .menu-info {
+    padding: 6px 12px;
+    font-size: 8px;
+    color: #52525b;
+    text-align: right;
+    }
+    .p-icon { margin-right: 8px; font-size: 12px; }
+
+    .kernel-diagnostic-light.is-switching {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+    animation: light-glitch 0.5s infinite;
+    }
+
+    .status-dot.syncing {
+    background: #3b82f6;
+    box-shadow: 0 0 10px #3b82f6;
+    animation: rotate-sync 1s infinite linear;
+    border-radius: 2px; /* Square dot when syncing */
+    }
+
+    @keyframes rotate-sync {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+    }
+
+    @keyframes light-glitch {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+    }
+
 .grid-context-menu {
   position: fixed;
   z-index: 10000;
