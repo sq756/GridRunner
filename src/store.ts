@@ -1,5 +1,6 @@
 import { reactive, computed, shallowRef, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { terminalManager } from './TerminalManager';
 import { webviewManager } from './WebviewManager';
 
@@ -235,6 +236,25 @@ export const storeActions = {
     }
   },
 
+  async reconnectTab(id: string) {
+    const tab = terminalTabs.value.find(t => t.id === id);
+    if (!tab || tab.viewType !== 'terminal') return;
+    
+    storeActions.pushLog(`[SYSTEM] Attempting automatic session recovery for ${id}...`);
+    try {
+      if (globalState.host === 'LOCAL') {
+        await invoke('spawn_local_pty', { tabId: id });
+      } else {
+        await invoke('spawn_new_pty', { tabId: id, initialRows: 30, initialCols: 100 });
+      }
+      // Send a newline to trigger prompt refresh
+      setTimeout(() => invoke('write_pty', { tabId: id, data: "\n\r" }), 500);
+      storeActions.pushLog(`[SUCCESS] Session ${id} recovered.`);
+    } catch (e) {
+      storeActions.pushLog(`[ERROR] Session recovery failed for ${id}: ${e}`);
+    }
+  },
+
   // Bug 6 Fix: Rename tab and sync tmux session name
   async renameTab(id: string, newName: string) {
     const tab = terminalTabs.value.find(t => t.id === id);
@@ -250,3 +270,8 @@ export const storeActions = {
     }
   }
 };
+
+// Auto-register Listeners
+listen('connection-metrics', (event: any) => {
+  storeActions.updateMetrics(event.payload);
+});

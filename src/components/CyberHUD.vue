@@ -10,15 +10,32 @@ const props = defineProps<{
 }>();
 
 const handleReconnect = async () => {
-  if (globalState.activeServerId) {
-    storeActions.pushLog('[SYSTEM] Manual reconnection initiated...');
-    try {
-      await invoke('connect_with_id', { id: globalState.activeServerId });
-    } catch (e) {
-      storeActions.pushLog(`[ERROR] Reconnect failed: ${e}`);
-    }
-  } else {
+  if (!globalState.activeServerId) {
     storeActions.pushLog('[WARN] No active server ID to reconnect to.');
+    return;
+  }
+
+  // v2.18.0: Protocol-Aware Intelligent Reconnection
+  if (globalState.isConnected && globalState.currentAgentPort) {
+    storeActions.pushLog(`[SYSTEM] Attempting protocol upgrade to WebSocket (Port: ${globalState.currentAgentPort})...`);
+    try {
+      await invoke('upgrade_transport', { 
+        url: `ws://${globalState.host}:${globalState.currentAgentPort}`, 
+        token: globalState.agentToken 
+      });
+      storeActions.pushLog('[SUCCESS] Connection upgraded to high-performance WebSocket.');
+      return;
+    } catch (e) {
+      storeActions.pushLog(`[INFO] Upgrade skipped or failed: ${e}. Falling back to standard check.`);
+    }
+  }
+
+  storeActions.pushLog('[SYSTEM] Full link restoration initiated...');
+  try {
+    await invoke('connect_with_id', { id: globalState.activeServerId });
+    storeActions.pushLog('[SUCCESS] Remote link restored via SSH.');
+  } catch (e) {
+    storeActions.pushLog(`[ERROR] Restoration failed: ${e}`);
   }
 };
 

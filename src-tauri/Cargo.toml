@@ -48,6 +48,8 @@ chrono = "0.4"
 # portable-pty moved to target-specific section below (not Android)
 sysinfo = "0.33"
 tauri-plugin-fs = "2.4.5"
+tokio-tungstenite = "0.26"
+url = "2.5"
 
 # portable-pty uses termios which has no Android support.
 # Gate it to desktop platforms only.

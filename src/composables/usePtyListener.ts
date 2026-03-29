@@ -68,6 +68,16 @@ export function usePtyListener(
       }, 200);
     }
 
+    // v2.18.0: Automatic Reconnection Trigger
+    if (text.includes('[Process Completed]') && globalState.isConnected) {
+      storeActions.pushLog(`[SYSTEM] Connection loss detected on ${id}. Auto-recovery in 2s...`);
+      setTimeout(() => {
+        if (globalState.isConnected) {
+          storeActions.reconnectTab(id);
+        }
+      }, 2000);
+    }
+
     // AutoPilot Logic
     if (isAutoPilot.value) {
       const pt = text.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''); // Strip ANSI

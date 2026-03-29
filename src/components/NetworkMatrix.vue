@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { terminalManager } from '../TerminalManager';
+import { globalState } from '../store';
 
 // Basic styles for VueFlow
 import '@vue-flow/core/dist/style.css';
@@ -247,6 +248,8 @@ onConnect((params) => addEdges([params]));
         </div>
         <div class="topology-hud">
           <div class="hud-item">ENCRYPTION: AES-256-GCM</div>
+          <div class="hud-item">PROTOCOL: <span :style="{ color: globalState.connectionMetrics.isDirect ? '#22c55e' : '#f59e0b' }">{{ globalState.connectionMetrics.protocol }}</span></div>
+          <div class="hud-item">LATENCY: {{ globalState.connectionMetrics.latency }}ms</div>
           <div class="hud-item">STATUS: {{ props.activeId ? 'SECURE' : 'IDLE' }}</div>
         </div>
       </section>
