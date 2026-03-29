@@ -1,4 +1,4 @@
-package com.sq756.ter
+package com.sq756.gridrunner
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
