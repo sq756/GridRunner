@@ -910,13 +910,11 @@ watch(() => showWebMenu.value, (val) => { if (val) activeMenu.value = 'web'; });
             </button>
             <span class="status-sep">|</span>
             <button class="status-btn" 
-                    @click="globalState.showSettings = true"
-                    @contextmenu.prevent.stop="onTerminalContextMenu({ e: $event, id: 'SETTINGS_CONTROL', type: 'settings-menu' })">SETTINGS</button>
+                    @click="globalState.showSettings = true">SETTINGS</button>
             <span class="status-sep">|</span>
             <button class="status-btn lock-btn" 
                     :class="{ 'active': globalState.isLocked }" 
-                    @click="globalState.isLocked = !globalState.isLocked"
-                    @contextmenu.prevent.stop="onTerminalContextMenu({ e: $event, id: 'LOCK_CONTROL', type: 'lock-menu' })">SYS_LOCK</button>
+                    @click="globalState.isLocked = !globalState.isLocked">SYS_LOCK</button>
           </div>
         </footer>
       </main>

@@ -77,8 +77,11 @@ class TerminalManager {
 
     // Atomic data binding
     term.onData((data) => {
-      const cb = this.callbacks.get(id);
-      if (cb) cb(id, data);
+      // v3.1.10: Direct PTY Bridge Recovery
+      if (this.dataHook && this.dataHook(id, data, new TextEncoder().encode(data))) {
+        return; 
+      }
+      invoke('write_pty', { tabId: id, data }).catch(console.error);
     });
 
     // v2.15.35: Global Listener Registration

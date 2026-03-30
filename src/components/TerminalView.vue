@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import { terminalManager } from '../TerminalManager';
 
 const props = defineProps<{
@@ -7,13 +8,7 @@ const props = defineProps<{
   active: boolean;
   uiScale: number;
 }>();
-
-const emit = defineEmits(['terminal-context', 'new-tab', 'close-tab', 'toggle-split']);
-
-const terminalRef = ref<HTMLElement | null>(null);
-const showJumpBtn = ref(false);
-let resizeObserver: ResizeObserver | null = null;
-let fitTimeout: any = null;
+// ... (rest of props/emits)
 
 const performFit = async () => {
   if (fitTimeout) clearTimeout(fitTimeout);
@@ -27,19 +22,15 @@ const performFit = async () => {
         instance.fit.fit();
         
         const { cols, rows } = instance.term;
-        // Sync size with backend PTY
-        import('@tauri-apps/api/core').then(({ invoke }) => {
-          invoke('resize_pty', { tabId: props.id, cols, rows }).catch(() => {});
-        });
+        // Sync size with backend PTY - v3.1.10: Using static invoke to prevent stutter
+        invoke('resize_pty', { tabId: props.id, cols, rows }).catch(() => {});
         
-        // v2.14.13: Force scroll to bottom after fit to prevent "scrolling from top" lag
         instance.term.scrollToBottom();
       } else {
-        // v2.15.4: Retry fit if element is not yet ready
         performFit();
       }
     }
-  }, 100); // Increased debounce for stability
+  }, 100);
 };
 
 const jumpToBottom = async () => {
